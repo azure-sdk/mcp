@@ -30,7 +30,6 @@ jobs:
   - task: Powershell@2
     displayName: "Create build info file"
     name: CreateBuildInfo
-    condition: and(succeeded(), ne(variables['NoPackagesChanged'],'true'))
     inputs:
       pwsh: true
       filePath: $(Build.SourcesDirectory)/eng/scripts/New-BuildInfo.ps1

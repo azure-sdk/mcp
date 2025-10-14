@@ -11,6 +11,7 @@ param(
 . "$PSScriptRoot/../common/scripts/common.ps1"
 $RepoRoot = $RepoRoot.Path.Replace('\', '/')
 $dockerFile = "$RepoRoot/Dockerfile"
+$exitCode = 0
 
 if (!$BuildInfoPath) {
     $BuildInfoPath = "$RepoRoot/.work/build_info.json"
@@ -22,13 +23,14 @@ if (!$OutputPath) {
 
 if (!(Test-Path $BuildInfoPath)) {
     LogError "Build info file $BuildInfoPath does not exist. Run eng/scripts/New-BuildInfo.ps1 to create it."
-    exit 1
+    $exitCode = 1
+}
+
+if ($exitCode -ne 0) {
+    exit $exitCode
 }
 
 $buildInfo = Get-Content $BuildInfoPath -Raw | ConvertFrom-Json -AsHashtable
-
-$os = "linux"
-$arch = "x64"
 
 $supportedPlatforms = @(
     "linux/amd64"
@@ -113,15 +115,26 @@ try {
             )
 
             Invoke-LoggedCommand "docker build $($dockerArgs -join ' ')"
+            if ($LASTEXITCODE -ne 0) {
+                LogError "Docker build failed for $serverName on $dockerPlatformString"
+                $exitCode = 1
+                continue
+            }
 
             # the dockerImageName will contain slashes, so consider the full path including tag when creating the directory
             $platformOutputPath = "$OutputPath/$($platform.artifactPath)/$dockerImageName.tar"
             New-Item -Path (Split-Path $platformOutputPath -Parent) -ItemType Directory -Force | Out-Null
 
             Invoke-LoggedCommand "docker save $tag -o $(quote $platformOutputPath)"
+            if ($LASTEXITCODE -ne 0) {
+                LogError "Docker save failed for $serverName on $dockerPlatformString"
+                $exitCode = 1
+            }
         }
     }
 }
 finally {
     Set-Location $originalPath
 }
+
+exit $exitCode

@@ -63,29 +63,14 @@ extends:
       jobs:
       - template: /eng/pipelines/templates/jobs/analyze.yml
 
-      - template: /eng/pipelines/templates/jobs/build.yml
-        parameters:
-          TestTimeoutInMinutes: 10
-          ServerName: ${{ parameters.ServerName }}
-          OSName: linux
-          Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.LinuxBuildMatrix']
-          MaxParallel: 4
-
-      - template: /eng/pipelines/templates/jobs/build.yml
-        parameters:
-          TestTimeoutInMinutes: 10
-          ServerName: ${{ parameters.ServerName }}
-          OSName: windows
-          Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.WindowsBuildMatrix']
-          MaxParallel: 4
-
-      - template: /eng/pipelines/templates/jobs/build.yml
-        parameters:
-          TestTimeoutInMinutes: 10
-          ServerName: ${{ parameters.ServerName }}
-          OSName: macOS
-          Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.MacOsBuildMatrix']
-          MaxParallel: 4
+      - ${{ each os in split('linux|windows|macOS', '|') }}:
+        - template: /eng/pipelines/templates/jobs/build.yml
+          parameters:
+            TestTimeoutInMinutes: 10
+            ServerName: ${{ parameters.ServerName }}
+            OSName: ${{ os }}
+            Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.${{ os }}BuildMatrix']
+            MaxParallel: 4
 
     - ${{ if and(eq(variables['System.TeamProject'], 'internal'), eq(parameters.RunLiveTests, 'true')) }}:
       - stage: Test
@@ -102,7 +87,7 @@ extends:
         jobs:
         - template: /eng/pipelines/templates/jobs/live-test.yml
           parameters:
-            Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.LiveTestMatrix']
+            Matrix: stageDependencies.Initialize.Initialize.outputs['CreateBuildInfo.liveTestMatrix']
             MaxParallel: 10
             TimeoutInMinutes: 75
 

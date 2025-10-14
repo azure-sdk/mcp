@@ -344,7 +344,8 @@ function Get-BuildMatrices {
     $matrices = [ordered]@{}
 
     foreach ($os in $operatingSystems.name) {
-        $matrix = [ordered]@{}
+        $buildMatrix = [ordered]@{}
+        $smokeTestMatrix = [ordered]@{}
 
         $supportedPlatforms = $servers.platforms
         | Where-Object { $_.operatingSystem -eq $os }
@@ -359,24 +360,37 @@ function Get-BuildMatrices {
                 continue
             }
 
-            $matrix[$legName] = [ordered]@{
-                Pool = switch($os) {
-                    'windows' { $windowsPool }
-                    'linux' { $linuxPool }
-                    'macos' { $macPool }
-                }
-                OSVmImage = switch($os) {
-                    'windows' { $windowsVmImage }
-                    'linux' { $linuxVmImage }
-                    'macos' { $macVmImage }
-                }
+            $pool = switch($os) {
+                'windows' { $windowsPool }
+                'linux' { $linuxPool }
+                'macos' { $macPool }
+            }
+
+            $vmImage = switch($os) {
+                'windows' { $windowsVmImage }
+                'linux' { $linuxVmImage }
+                'macos' { $macVmImage }
+            }
+
+            $buildMatrix[$legName] = [ordered]@{
+                Pool = $pool
+                OSVmImage = $vmImage
                 Architecture = $arch
                 Native = $platform.native
                 RunUnitTests = $arch -eq 'x64' -and -not $platform.native
             }
+
+            if(!$platform.Native -and $arch -eq 'x64') {
+                $smokeTestMatrix[$legName] = [ordered]@{
+                    Pool = $pool
+                    OSVmImage = $vmImage
+                    Architecture = $arch
+                }
+            }
         }
 
-        $matrices[$os] = $matrix
+        $matrices["${os}BuildMatrix"] = $buildMatrix
+        $matrices["${os}SmokeTestMatrix"] = $smokeTestMatrix
     }
 
     return $matrices
@@ -385,10 +399,10 @@ function Get-BuildMatrices {
 Push-Location $RepoRoot
 try {
     $serverDetails = @(Get-ServerDetails)
+    $matrices = Get-BuildMatrices $serverDetails
+
     $pathsToTest = @(Get-PathsToTest)
-    $buildMatrices = Get-BuildMatrices $serverDetails
-    $unitTestMatrix = Get-TestMatrix $pathsToTest -TestType 'Unit'
-    $liveTestMatrix = Get-TestMatrix $pathsToTest -TestType 'Live'
+    $matrices['liveTestMatrix'] = Get-TestMatrix $pathsToTest -TestType 'Live'
 
     # spellchecker: ignore SOURCEVERSION
     $branch = $isPipelineRun ? (CheckVariable 'BUILD_SOURCEBRANCH') : (git rev-parse --abbrev-ref HEAD)
@@ -403,9 +417,7 @@ try {
         commitSha = $commitSha
         servers = $serverDetails
         pathsToTest = $pathsToTest
-        buildMatrices = $buildMatrices
-        unitTestMatrix = $unitTestMatrix
-        liveTestMatrix = $liveTestMatrix
+        matrices = $matrices
     }
 
     Write-Host "Writing build info to $OutputPath"
@@ -415,11 +427,10 @@ try {
     $buildInfo | ConvertTo-Json -Depth 5 | Out-File -FilePath $OutputPath -Encoding utf8 -Force
 
     if ($isPipelineRun) {
-        Write-Host "##vso[task.setvariable variable=WindowsBuildMatrix;isOutput=true]$($buildMatrices.windows | ConvertTo-Json -Compress)"
-        Write-Host "##vso[task.setvariable variable=LinuxBuildMatrix;isOutput=true]$($buildMatrices.linux | ConvertTo-Json -Compress)"
-        Write-Host "##vso[task.setvariable variable=MacOsBuildMatrix;isOutput=true]$($buildMatrices.macos | ConvertTo-Json -Compress)"
-        Write-Host "##vso[task.setvariable variable=UnitTestMatrix;isOutput=true]$($unitTestMatrix | ConvertTo-Json -Compress)"
-        Write-Host "##vso[task.setvariable variable=LiveTestMatrix;isOutput=true]$($liveTestMatrix | ConvertTo-Json -Compress)"
+        foreach($key in $matrices.Keys) {
+            $matrixJson = $matrices[$key] | ConvertTo-Json -Compress
+            Write-Host "##vso[task.setvariable variable=${key};isOutput=true]$matrixJson"
+        }
     }
 }
 finally {

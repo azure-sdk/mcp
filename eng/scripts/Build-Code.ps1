@@ -103,11 +103,23 @@ function BuildServer($server) {
 
     foreach ($os in $OperatingSystem) {
         foreach ($arch in $Architecture) {
-            $platform = $server.platforms
+            $filteredPlatforms = @($server.platforms
             | Where-Object {
                 ($_.operatingSystem -eq $os) -and
                 ($_.architecture -eq $arch) -and
-                ($_.native -eq $Native) }
+                ($_.native -eq $Native) })
+
+            if ($filteredPlatforms.Count -eq 0) {
+                LogError "No build configuration found for $serverName on $os-$arch with Native=$Native"
+                $script:exitCode = 1
+                continue
+            } elseif ($filteredPlatforms.Count -gt 1) {
+                LogError "Multiple build configurations found for $serverName on $os-$arch with Native=$Native"
+                $script:exitCode = 1
+                continue
+            }
+
+            $platform = $filteredPlatforms[0]
 
             $dotnetOs = $platform.dotnetOs
             $runtime = "$dotnetOs-$arch"
