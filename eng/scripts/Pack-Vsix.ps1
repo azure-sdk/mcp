@@ -53,7 +53,8 @@ Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue -Progr
 Write-Host "Copying vsix source files to $tempPath"
 Copy-Item -Path $sourcePath -Destination $tempPath -Recurse -Force -ProgressAction SilentlyContinue
 
-Push-Location $tempPath
+$originalLocation = Get-Location
+Set-Location $tempPath
 try {
     Write-Host "Installing npm packages"
     Invoke-LoggedCommand 'npm ci --omit=optional'
@@ -82,9 +83,9 @@ try {
             #>
             $semver = [AzureEngSemanticVersion]::new($version)
             $semver.PrereleaseLabel = ''
-            $semver.Patch = $buildId
+            $semver.Patch = $buildInfo.buildId
             $version = $semver.ToString()
-            Write-Host "SetDevVersion is true, using Build.BuildId as patch number: $($serverJson.version) -> $version" -ForegroundColor Yellow
+            Write-Host "SetDevVersion is true, using Build.BuildId as patch number: $($server.version) -> $version" -ForegroundColor Yellow
         }
 
         Write-Host "Copying server icon from $($server.packageIcon) to $tempPath/resources/package-icon.png"
@@ -178,7 +179,7 @@ Processing VSIX packaging: $vsixBaseName
     }
 }
 finally {
-    Pop-Location
+    Set-Location $originalLocation
 }
 
 exit $exitCode
